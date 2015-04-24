@@ -11,9 +11,9 @@ $ bcl_to_fastq --reverse-complement
 Info      : Using /mnt/ilmn/150212_NS500409_0021_AH3CHYBGXX/SampleSheet.csv
 Info      : Found 48 samples for run 150212_NS500409_0021_AH3CHYBGXX
 Info      : Run complete.
-Info      : Converting .bcl to .fastq using: $>bcl2fastq -r 12 -d 12 -p 24 -w 12 --barcode-mismatches 0 -R /mnt/ilmn/150212_NS500409_0021_AH3CHYBGXX
+Info      : Converting .bcl to .fastq using: $>bcl2fastq -r 12 -d 12 -p 24 -w 12 --barcode-mismatches 0 -R '.'
 Info      : Conversion successful
-Info      : Generating demultiplexing stats file /mnt/ilmn/150212_NS500409_0021_AH3CHYBGXX/demultiplexing_stats.csv
+Info      : Generating demultiplexing stats file ./demultiplexing_stats.csv
 Info      : Joining reads across lanes
 Info      : Removing intermediate and Undetermined fastq files
 ```
@@ -83,6 +83,7 @@ Options:
 + [click](http://click.pocoo.org/4/)
 + [pandas](http://pandas.pydata.org/)
 + [bcl2fastq2](http://support.illumina.com/downloads/bcl2fastq_conversion_software.html)
+
 Tested only on Python 2.7.
 
 # Install
