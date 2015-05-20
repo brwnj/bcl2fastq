@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name='bcl2fastq',
-    version='1.0.0',
+    version='1.0.1',
     url='http://github.com/brwnj/bcl2fastq',
     license='MIT',
     author='Joe Brown',
@@ -13,6 +13,9 @@ setup(
     py_modules=['bcl2fastq'],
     install_requires=[
         'click>=2.0',
+        'pandas',
+        'seaborn',
+        'matplotlib',
     ],
     entry_points='''
         [console_scripts]
