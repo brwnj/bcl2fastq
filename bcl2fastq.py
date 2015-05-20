@@ -3,18 +3,26 @@
 
 from __future__ import print_function
 
+import matplotlib
+matplotlib.use('Agg')
+
 import click
 import fileinput
+import matplotlib.pyplot as plt
 import os
 import pandas as pd
+import seaborn as sns
 import string
 import subprocess as sp
 import sys
 import time
-from collections import defaultdict
 from glob import glob
 from itertools import izip_longest
 from xml.etree import cElementTree as ET
+
+sns.set_context('paper')
+sns.set_style('whitegrid', {'axes.linewidth': 1})
+
 
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 
@@ -126,21 +134,27 @@ def compile_demultiplex_stats(runfolder, output_dir):
     stats_xml = os.path.join(os.path.abspath(output_dir), "Stats",
                              "DemultiplexingStats.xml")
     stats_csv = os.path.join(runfolder, "demultiplexing_stats.csv")
+    plot_pdf = os.path.join(runfolder, "demultiplexing_distribution.pdf")
     if os.path.exists(stats_xml):
         log("Info", "Generating demultiplexing stats file {}", stats_csv)
         doc = ET.parse(stats_xml)
         root = doc.getroot()
-        counts = defaultdict(list)
+        counts = {}
         for sample in root.iter('Sample'):
             name = sample.get('name')
             if name == "all" or name == "unknown": continue
+            counts[name] = {}
             for barcode in sample.iter('Barcode'):
                 if barcode.get('name') == "all": continue
                 for lane in barcode.iter('Lane'):
+                    lane_name = lane.get('number')
                     count = int(lane.findtext('BarcodeCount'))
-                    counts[name].append(count)
+                    counts[name][lane_name] = count
         counts_df = pd.DataFrame(counts)
         counts_df.sum().to_csv(stats_csv)
+        ax = counts_df.T.plot(kind='bar', stacked=True)
+        fig = ax.get_figure()
+        fig.savefig(plot_pdf, bbox_inches="tight")
     else:
         log('Error', 'Could not find file {}. Demux stats not generated.',
             stats_xml)
