@@ -12,7 +12,7 @@ setup(
     long_description=__doc__,
     py_modules=['bcl2fastq'],
     install_requires=[
-        'click>=2.0',
+        'click>=4.0',
         'pandas',
         'seaborn',
         'matplotlib',
