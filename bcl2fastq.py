@@ -24,17 +24,9 @@ sns.set_context('paper')
 sns.set_style('whitegrid', {'axes.linewidth': 1})
 
 
-CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
-
-
 def log(category, message, *args, **kwargs):
-    click.echo('%s: %s' %
-               (click.style(category.ljust(10),
-                            fg='cyan'),
-                message.replace('{}',
-                                click.style('{}',
-                                            fg='yellow')).format(*args,
-                                                                 **kwargs), ))
+    click.echo('%s: %s' % (click.style(category.ljust(10), fg='cyan'),
+        message.replace('{}', click.style('{}', fg='yellow')).format(*args, **kwargs)))
 
 
 def get_samplesheet(path):
@@ -198,7 +190,9 @@ def cleanup(patterns):
             os.remove(f)
 
 
-@click.command(context_settings=CONTEXT_SETTINGS)
+@click.command(context_settings=dict(
+               help_option_names=['-h', '--help'],
+               ignore_unknown_options=True,))
 @click.option("--runfolder",
               default=".",
               show_default=True,
@@ -248,9 +242,10 @@ def cleanup(patterns):
               default=False,
               show_default=True,
               help="process the run without checking its completion status")
+@click.argument('bcl2fastq_args', nargs=-1, type=click.UNPROCESSED)
 def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
               barcode_mismatches, joining, keep_tmp, reverse_complement,
-              no_wait):
+              no_wait, bcl2fastq_args):
     """Runs bcl2fastq2, creating fastqs and concatenating fastqs across lanes.
     Original fastq files and Undetermined files are deleted.
     """
@@ -268,7 +263,7 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
     fastq_dir = os.path.join(runfolder, "Data", "Intensities", "BaseCalls")
     cmd_args = ["bcl2fastq", "-r", loading, "-d", demultiplexing, "-p",
                 processing, "-w", writing, "--barcode-mismatches",
-                barcode_mismatches, "-R", runfolder]
+                barcode_mismatches, "-R", runfolder] + list(bcl2fastq_args)
     call_status = run_bcl2fastq(runfolder, cmd_args)
     if not call_status:
         sys.exit("Something went wrong when trying to convert the .bcl files.")
