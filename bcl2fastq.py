@@ -8,7 +8,6 @@ matplotlib.use('Agg')
 
 import click
 import fileinput
-import matplotlib.pyplot as plt
 import os
 import pandas as pd
 import seaborn as sns
@@ -16,6 +15,7 @@ import string
 import subprocess as sp
 import sys
 import time
+from datetime import datetime
 from glob import glob
 from itertools import izip_longest
 from xml.etree import cElementTree as ET
@@ -41,6 +41,7 @@ def process_samplesheet(samplesheet, reverse_complement):
     _complement = string.maketrans("ATCG", "TAGC")
     complement = lambda seq: seq.translate(_complement)
     samples = []
+    date = datetime.now().strftime("%Y-%m-%d-%H%M-%S")
     try:
         start = False
         sample_project_idx = 0
@@ -48,7 +49,7 @@ def process_samplesheet(samplesheet, reverse_complement):
         # strip whitespace and rewrite file in place
         for toks in fileinput.input(samplesheet,
                                     mode='rU',
-                                    backup='.bak',
+                                    backup='.' + date + '.bak',
                                     inplace=True):
             toks = toks.rstrip("\r\n").split(',')
             if not start:
