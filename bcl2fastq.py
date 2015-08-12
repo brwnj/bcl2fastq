@@ -8,6 +8,7 @@ matplotlib.use('Agg')
 
 import click
 import fileinput
+import logging
 import os
 import pandas as pd
 import seaborn as sns
@@ -23,21 +24,22 @@ from xml.etree import cElementTree as ET
 sns.set_context('paper')
 sns.set_style('whitegrid', {'axes.linewidth': 1})
 
-
-def log(category, message, *args, **kwargs):
-    click.echo('%s: %s' % (click.style(category.ljust(10), fg='cyan'),
-        message.replace('{}', click.style('{}', fg='yellow')).format(*args, **kwargs)))
+logging.basicConfig(level=logging.INFO,
+                    format="[%(asctime)s - %(levelname)s] %(message)s",
+                    datefmt="%Y-%m-%d %H:%M:%S")
+logger = logging.getLogger(__name__)
 
 
 def get_samplesheet(path):
     s = os.path.join(os.path.abspath(path), "SampleSheet.csv")
-    log('Info', 'Using {}', s)
+    logger.info('Using %s', s)
     if not os.path.exists(s):
-        raise OSError(2, 'No such file', s)
+         raise OSError(2, 'No such file', s)
     return s
 
 
 def process_samplesheet(samplesheet, reverse_complement):
+    logger.info("Processing %s", samplesheet)
     _complement = string.maketrans("ATCG", "TAGC")
     complement = lambda seq: seq.translate(_complement)
     samples = []
@@ -80,7 +82,7 @@ def process_samplesheet(samplesheet, reverse_complement):
     finally:
         fileinput.close()
     run = os.path.basename(os.path.dirname(samplesheet))
-    log('Info', 'Found {} samples for run {}', len(samples), run)
+    logger.info('Found %d samples for run %s', len(samples), run)
     return samples
 
 
@@ -92,12 +94,12 @@ def wait_for_completion(path, no_wait):
     notify = True
     while not os.path.exists(status_xml):
         if notify:
-            log('Info', "Waiting on run completion.")
+            logger.info("Waiting on run completion.")
             notify = False
         time.sleep(sleep_time)
         if sleep_time < 60:
             sleep_time += 1
-    log('Info', "Run complete.")
+    logger.info("Run complete.")
     try:
         doc = ET.parse(status_xml)
         run_status = doc.find("CompletionStatus").text
@@ -111,7 +113,7 @@ def wait_for_completion(path, no_wait):
 def run_bcl2fastq(runfolder, args):
     runlog = os.path.join(runfolder, "bcl2fastq.log")
     cmd = " ".join(map(str, args))
-    log("Info", "Converting .bcl to .fastq using: $>{}", cmd)
+    logger.info("Converting .bcl to .fastq using: $>%s", cmd)
     with open(runlog, 'w') as fh:
         # bcl2fastq version info...
         sp.check_call("bcl2fastq --version 2>&1 | tail -2 | head -1",
@@ -119,7 +121,7 @@ def run_bcl2fastq(runfolder, args):
                       stderr=fh,
                       shell=True)
         sp.check_call(cmd, stdout=fh, stderr=fh, shell=True)
-    log("Info", "Conversion successful")
+    logger.info(".bcl Conversion successful")
     return True
 
 
@@ -129,7 +131,7 @@ def compile_demultiplex_stats(runfolder, output_dir):
     stats_csv = os.path.join(runfolder, "demultiplexing_stats.csv")
     plot_pdf = os.path.join(runfolder, "demultiplexing_distribution.pdf")
     if os.path.exists(stats_xml):
-        log("Info", "Generating demultiplexing stats file {}", stats_csv)
+        logger.info("Generating demultiplexing stats file %s", stats_csv)
         doc = ET.parse(stats_xml)
         root = doc.getroot()
         counts = {}
@@ -149,8 +151,7 @@ def compile_demultiplex_stats(runfolder, output_dir):
         fig = ax.get_figure()
         fig.savefig(plot_pdf, bbox_inches="tight")
     else:
-        log('Error', 'Could not find file {}. Demux stats not generated.',
-            stats_xml)
+        logger.warning('Could not find file %s', stats_xml)
     return stats_csv
 
 
@@ -165,14 +166,15 @@ def build_concat_commands(samples, fastq_dir):
                 path = "%s/%s_S%d_L00%d_%s_001.fastq.gz" % (fastq_dir, sample,
                                                             idx, lane, read)
                 if not os.path.exists(path):
-                    sys.exit("Could not find %s. Concatenation failed." % path)
+                    logger.critical("Could not find %s. Concatenation failed.", path)
+                    sys.exit(1)
                 cmd.append(path)
             cmds.append(" ".join(cmd) + " > " + result_file)
     return cmds
 
 
 def join_fastqs(samples, fastq_dir, threads=1):
-    log("Info", "Joining reads across lanes")
+    logger.info("Joining reads across lanes")
     success = True
     concat_cmds = build_concat_commands(samples, fastq_dir)
     groups = [(sp.Popen(cmd, shell=True) for cmd in concat_cmds)] * threads
@@ -185,7 +187,7 @@ def join_fastqs(samples, fastq_dir, threads=1):
 
 
 def cleanup(patterns):
-    log("Info", "Removing intermediate and Undetermined fastq files")
+    logger.info("Removing intermediate and Undetermined fastq files")
     for p in patterns:
         for f in glob(p):
             os.remove(f)
@@ -253,21 +255,25 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
     try:
         samplesheet = get_samplesheet(runfolder)
     except OSError:
-        sys.exit("Could not find SampleSheet.csv")
+        logger.critical("Could not find SampleSheet.csv")
+        sys.exit(1)
     samples = process_samplesheet(samplesheet, reverse_complement)
     if len(samples) == 0:
-        sys.exit(("No samples were found in the SampleSheet. "
-                  "Please check its formatting."))
+        logger.critical(("No samples were found in the SampleSheet. "
+                         "Please check its formatting."))
+        sys.exit(1)
     completion_success = wait_for_completion(runfolder, no_wait)
     if not completion_success:
-        sys.exit("Run did not complete as planned. Exiting.")
+        logger.critical("Run did not complete as planned. Exiting.")
+        sys.exit(1)
     fastq_dir = os.path.join(runfolder, "Data", "Intensities", "BaseCalls")
     cmd_args = ["bcl2fastq", "-r", loading, "-d", demultiplexing, "-p",
                 processing, "-w", writing, "--barcode-mismatches",
                 barcode_mismatches, "-R", runfolder] + list(bcl2fastq_args)
     call_status = run_bcl2fastq(runfolder, cmd_args)
     if not call_status:
-        sys.exit("Something went wrong when trying to convert the .bcl files.")
+        logger.critical("Something went wrong when trying to convert the .bcl files.")
+        sys.exit(1)
     run_stats = compile_demultiplex_stats(runfolder, fastq_dir)
     # write file with sample names for downstream parallelization
     with open(os.path.join(fastq_dir, "SAMPLES"), 'w') as ofh:
