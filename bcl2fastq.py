@@ -155,42 +155,35 @@ def compile_demultiplex_stats(runfolder, output_dir):
     return stats_csv
 
 
-def build_concat_commands(samples, fastq_dir):
-    cmds = []
-    for idx, sample in enumerate(samples, start=1):
-        for read in ['R1', 'R2']:
-            cmd = ['cat']
-            result_file = "%s/%s_%s.fastq.gz" % (fastq_dir, sample, read)
-            for lane in range(1, 5):
-                # build the file paths
-                path = "%s/%s_S%d_L00%d_%s_001.fastq.gz" % (fastq_dir, sample,
-                                                            idx, lane, read)
-                if not os.path.exists(path):
-                    logger.critical("Could not find %s. Concatenation failed.", path)
-                    sys.exit(1)
-                cmd.append(path)
-            cmds.append(" ".join(cmd) + " > " + result_file)
-    return cmds
+# def build_concat_commands(samples, fastq_dir):
+#     cmds = []
+#     for idx, sample in enumerate(samples, start=1):
+#         for read in ['R1', 'R2']:
+#             cmd = ['cat']
+#             result_file = "%s/%s_%s.fastq.gz" % (fastq_dir, sample, read)
+#             for lane in range(1, 5):
+#                 # build the file paths
+#                 path = "%s/%s_S%d_L00%d_%s_001.fastq.gz" % (fastq_dir, sample,
+#                                                             idx, lane, read)
+#                 if not os.path.exists(path):
+#                     logger.critical("Could not find %s. Concatenation failed.", path)
+#                     sys.exit(1)
+#                 cmd.append(path)
+#             cmds.append(" ".join(cmd) + " > " + result_file)
+#     return cmds
 
 
-def join_fastqs(samples, fastq_dir, threads=1):
-    logger.info("Joining reads across lanes")
-    success = True
-    concat_cmds = build_concat_commands(samples, fastq_dir)
-    groups = [(sp.Popen(cmd, shell=True) for cmd in concat_cmds)] * threads
-    for processes in izip_longest(*groups):
-        for p in filter(None, processes):
-            p.wait()
-            if p.returncode != 0:
-                success = False
-    return success
-
-
-def cleanup(patterns):
-    logger.info("Removing intermediate and Undetermined fastq files")
-    for p in patterns:
-        for f in glob(p):
-            os.remove(f)
+# def join_fastqs(samples, fastq_dir, threads=1):
+#     logger.info("Joining reads across lanes")
+#     success = True
+#     concat_cmds = build_concat_commands(samples, fastq_dir)
+#     groups = [(sp.Popen(cmd, shell=True) for cmd in concat_cmds)] * threads
+#     for processes in izip_longest(*groups):
+#         for p in filter(None, processes):
+#             p.wait()
+#             if p.returncode != 0:
+#                 success = False
+#     return success
 
 
 @click.command(context_settings=dict(
@@ -225,16 +218,11 @@ def cleanup(patterns):
               type=int,
               show_default=True,
               help="number of allowed mismatches per index")
-@click.option("--joining",
-              default=12,
-              type=int,
-              show_default=True,
-              help="number of threads used for file joining")
 @click.option("--keep-tmp",
               is_flag=True,
               default=False,
               show_default=True,
-              help="save fastqs across lanes as well as Undetermined")
+              help="save Undetermined reads")
 @click.option("--reverse-complement",
               is_flag=True,
               default=False,
@@ -247,10 +235,10 @@ def cleanup(patterns):
               help="process the run without checking its completion status")
 @click.argument('bcl2fastq_args', nargs=-1, type=click.UNPROCESSED)
 def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
-              barcode_mismatches, joining, keep_tmp, reverse_complement,
+              barcode_mismatches, keep_tmp, reverse_complement,
               no_wait, bcl2fastq_args):
     """Runs bcl2fastq2, creating fastqs and concatenating fastqs across lanes.
-    Original fastq files and Undetermined files are deleted.
+    Undetermined files are deleted by default.
     """
     try:
         samplesheet = get_samplesheet(runfolder)
@@ -269,7 +257,8 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
     fastq_dir = os.path.join(runfolder, "Data", "Intensities", "BaseCalls")
     cmd_args = ["bcl2fastq", "-r", loading, "-d", demultiplexing, "-p",
                 processing, "-w", writing, "--barcode-mismatches",
-                barcode_mismatches, "-R", runfolder] + list(bcl2fastq_args)
+                barcode_mismatches, "--no-lane-splitting",
+                "-R", runfolder] + list(bcl2fastq_args)
     call_status = run_bcl2fastq(runfolder, cmd_args)
     if not call_status:
         logger.critical("Something went wrong when trying to convert the .bcl files.")
@@ -278,10 +267,9 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
     # write file with sample names for downstream parallelization
     with open(os.path.join(fastq_dir, "SAMPLES"), 'w') as ofh:
         print(*samples, sep="\n", file=ofh)
-    join_status = join_fastqs(samples, fastq_dir, joining)
-    if join_status and not keep_tmp:
-        cleanup([os.path.join(fastq_dir, "*_S*_L00*_*_001.fastq.gz"),
-                 os.path.join(fastq_dir, "Undetermined_*.fastq.gz")])
+    if not keep_tmp:
+        for f in glob(os.path.join(fastq_dir, "Undetermined_*.fastq.gz")):
+            os.remove(f)
 
 
 if __name__ == '__main__':
