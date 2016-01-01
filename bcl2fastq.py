@@ -155,37 +155,6 @@ def compile_demultiplex_stats(runfolder, output_dir):
     return stats_csv
 
 
-# def build_concat_commands(samples, fastq_dir):
-#     cmds = []
-#     for idx, sample in enumerate(samples, start=1):
-#         for read in ['R1', 'R2']:
-#             cmd = ['cat']
-#             result_file = "%s/%s_%s.fastq.gz" % (fastq_dir, sample, read)
-#             for lane in range(1, 5):
-#                 # build the file paths
-#                 path = "%s/%s_S%d_L00%d_%s_001.fastq.gz" % (fastq_dir, sample,
-#                                                             idx, lane, read)
-#                 if not os.path.exists(path):
-#                     logger.critical("Could not find %s. Concatenation failed.", path)
-#                     sys.exit(1)
-#                 cmd.append(path)
-#             cmds.append(" ".join(cmd) + " > " + result_file)
-#     return cmds
-
-
-# def join_fastqs(samples, fastq_dir, threads=1):
-#     logger.info("Joining reads across lanes")
-#     success = True
-#     concat_cmds = build_concat_commands(samples, fastq_dir)
-#     groups = [(sp.Popen(cmd, shell=True) for cmd in concat_cmds)] * threads
-#     for processes in izip_longest(*groups):
-#         for p in filter(None, processes):
-#             p.wait()
-#             if p.returncode != 0:
-#                 success = False
-#     return success
-
-
 @click.command(context_settings=dict(
                help_option_names=['-h', '--help'],
                ignore_unknown_options=True,))
@@ -255,21 +224,26 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
         logger.critical("Run did not complete as planned. Exiting.")
         sys.exit(1)
     fastq_dir = os.path.join(runfolder, "Data", "Intensities", "BaseCalls")
-    cmd_args = ["bcl2fastq", "-r", loading, "-d", demultiplexing, "-p",
-                processing, "-w", writing, "--barcode-mismatches",
-                barcode_mismatches, "--no-lane-splitting",
-                "-R", runfolder] + list(bcl2fastq_args)
-    call_status = run_bcl2fastq(runfolder, cmd_args)
-    if not call_status:
-        logger.critical("Something went wrong when trying to convert the .bcl files.")
-        sys.exit(1)
+    # cmd_args = ["bcl2fastq", "-r", loading, "-d", demultiplexing, "-p",
+    #             processing, "-w", writing, "--barcode-mismatches",
+    #             barcode_mismatches, "--no-lane-splitting",
+    #             "-R", runfolder] + list(bcl2fastq_args)
+    # call_status = run_bcl2fastq(runfolder, cmd_args)
+    # if not call_status:
+    #     logger.critical("Something went wrong when trying to convert the .bcl files.")
+    #     sys.exit(1)
     run_stats = compile_demultiplex_stats(runfolder, fastq_dir)
     # write file with sample names for downstream parallelization
     with open(os.path.join(fastq_dir, "SAMPLES"), 'w') as ofh:
         print(*samples, sep="\n", file=ofh)
-    if not keep_tmp:
-        for f in glob(os.path.join(fastq_dir, "Undetermined_*.fastq.gz")):
+    # cleanup the output directory
+    for f in glob(os.path.join(fastq_dir, "Undetermined_*.fastq.gz")):
+        if f.startswith("Undetermined_") and not keep_tmp:
             os.remove(f)
+        else:
+            # AD-332-A10_S1_R1_001.fastq.gz --> AD-332-A10_R1.fastq.gz
+            sample_name, sample_number, read_index, ext = os.path.basename(f).split("_")
+            os.rename(f, os.path.join(os.path.dirname(f), "%s_%s.%s" % (sample_name, read_index, ext.partition('.')[1])))
 
 
 if __name__ == '__main__':
