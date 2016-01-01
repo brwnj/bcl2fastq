@@ -238,11 +238,12 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
         print(*samples, sep="\n", file=ofh)
     # cleanup the output directory
     for f in glob(os.path.join(fastq_dir, "*.fastq*")):
-        if f.startswith("Undetermined_") and not keep_tmp:
+        filename = os.path.basename(f)
+        if filename.startswith("Undetermined_") and not keep_tmp:
             os.remove(f)
         else:
             # AD-332-A10_S1_R1_001.fastq.gz --> AD-332-A10_R1.fastq.gz
-            sample_name, sample_number, read_index, ext = os.path.basename(f).split("_")
+            sample_name, sample_number, read_index, ext = filename.split("_")
             new_file_name = "%s_%s.%s" % (sample_name, read_index, ext.partition('.')[-1])
             os.rename(f, os.path.join(os.path.dirname(f), new_file_name))
 
