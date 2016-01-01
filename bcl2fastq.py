@@ -237,7 +237,7 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
     with open(os.path.join(fastq_dir, "SAMPLES"), 'w') as ofh:
         print(*samples, sep="\n", file=ofh)
     # cleanup the output directory
-    for f in glob(os.path.join(fastq_dir, "Undetermined_*.fastq.gz")):
+    for f in glob(os.path.join(fastq_dir, "*.fastq*")):
         if f.startswith("Undetermined_") and not keep_tmp:
             os.remove(f)
         else:
