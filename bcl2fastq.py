@@ -243,7 +243,8 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
         else:
             # AD-332-A10_S1_R1_001.fastq.gz --> AD-332-A10_R1.fastq.gz
             sample_name, sample_number, read_index, ext = os.path.basename(f).split("_")
-            os.rename(f, os.path.join(os.path.dirname(f), "%s_%s.%s" % (sample_name, read_index, ext.partition('.')[1])))
+            new_file_name = "%s_%s.%s" % (sample_name, read_index, ext.partition('.')[-1])
+            os.rename(f, os.path.join(os.path.dirname(f), new_file_name))
 
 
 if __name__ == '__main__':
