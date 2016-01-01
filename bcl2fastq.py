@@ -223,7 +223,7 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
     if not completion_success:
         logger.critical("Run did not complete as planned. Exiting.")
         sys.exit(1)
-    fastq_dir = os.path.join(runfolder, "Data", "Intensities", "BaseCalls")
+    fastq_dir = os.path.abspath(os.path.join(runfolder, "Data", "Intensities", "BaseCalls"))
     # cmd_args = ["bcl2fastq", "-r", loading, "-d", demultiplexing, "-p",
     #             processing, "-w", writing, "--barcode-mismatches",
     #             barcode_mismatches, "--no-lane-splitting",
