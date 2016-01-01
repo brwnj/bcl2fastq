@@ -4,6 +4,8 @@ concatenates reads across lanes into R1 and R2 by sample. By default,
 Undetermined and reads across individual lanes are removed on success and
 all reads are placed in BaseCalls directory.
 
+Tested on `bcl2fastq2` Conversion Software v2.17 and Python 2.7.
+
 # Running
 ```
 $ cd /mnt/ilmn/150212_NS500409_0021_AH3CHYBGXX
@@ -14,8 +16,6 @@ Info      : Run complete.
 Info      : Converting .bcl to .fastq using: $>bcl2fastq -r 12 -d 12 -p 24 -w 12 --barcode-mismatches 0 -R '.'
 Info      : Conversion successful
 Info      : Generating demultiplexing stats file ./demultiplexing_stats.csv
-Info      : Joining reads across lanes
-Info      : Removing intermediate and Undetermined fastq files
 ```
 
 # Results
@@ -43,7 +43,7 @@ AAA240-J05,197833
 etc...
 ```
 
-Joined fastq files (`<sample>_R?.fastq.gz`) are available in
+Fastq files (`<sample>_R?.fastq.gz`) are available in
 RunFolder/Data/Intensities/BaseCalls along with a file named SAMPLES which
 merely listed the sample IDs that were processed.
 
@@ -68,8 +68,6 @@ Options:
                                 [default: 12]
   --barcode-mismatches INTEGER  number of allowed mismatches per index
                                 [default: 0]
-  --joining INTEGER             number of threads used for file joining
-                                [default: 12]
   --keep-tmp                    save fastqs across lanes as well as
                                 Undetermined  [default: False]
   --reverse-complement          reverse complement index 2 of the sample sheet
@@ -83,8 +81,6 @@ Options:
 + [click](http://click.pocoo.org/4/)
 + [pandas](http://pandas.pydata.org/)
 + [bcl2fastq2](http://support.illumina.com/downloads/bcl2fastq_conversion_software.html)
-
-Tested only on Python 2.7.
 
 # Install
 ```
