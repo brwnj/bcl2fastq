@@ -9,6 +9,8 @@ matplotlib.use('Agg')
 import click
 import fileinput
 import logging
+import matplotlib.pyplot as plt
+import numpy as np
 import os
 import pandas as pd
 import seaborn as sns
@@ -125,13 +127,9 @@ def run_bcl2fastq(runfolder, args):
     return True
 
 
-def compile_demultiplex_stats(runfolder, output_dir):
-    stats_xml = os.path.join(os.path.abspath(output_dir), "Stats",
-                             "DemultiplexingStats.xml")
-    stats_csv = os.path.join(runfolder, "demultiplexing_stats.csv")
-    plot_pdf = os.path.join(runfolder, "demultiplexing_distribution.pdf")
+def xml_to_df(stats_xml):
     if os.path.exists(stats_xml):
-        logger.info("Generating demultiplexing stats file %s", stats_csv)
+        logger.info("Generating demultiplexing stats file")
         doc = ET.parse(stats_xml)
         root = doc.getroot()
         counts = {}
@@ -145,14 +143,74 @@ def compile_demultiplex_stats(runfolder, output_dir):
                     lane_name = lane.get('number')
                     count = int(lane.findtext('BarcodeCount'))
                     counts[name][lane_name] = count
-        counts_df = pd.DataFrame(counts)
-        counts_df.sum().to_csv(stats_csv)
-        ax = counts_df.T.plot(kind='bar', stacked=True)
-        fig = ax.get_figure()
-        fig.savefig(plot_pdf, bbox_inches="tight")
+        return pd.DataFrame(counts)
     else:
         logger.warning('Could not find file %s', stats_xml)
-    return stats_csv
+        return None
+
+
+def barplot_distribution(df, out_file):
+    width = max([len(dft) / 10, 12])
+    f, ax = plt.subplots(figsize=(width, 6))
+    dft = df.T.drop("Undetermined", axis=0)
+    dft.plot(kind='bar', stacked=True, ax=ax)
+    f.savefig(out_file, bbox_inches='tight')
+    plt.close()
+
+
+def Lc(x):
+    """Computes the ordinary and generalized Lorenz curve of a list.
+
+    >>> import numpy as np
+    >>> t = [1,2,np.nan,7,8]
+    >>> p, L, Lg = Lc(t)
+    >>> len(p) == len(L) == len(Lg)
+    True
+    >>> p[1:4]
+    array([ 0.25,  0.5 ,  0.75])
+    >>> L[1:4] # doctest: +ELLIPSIS
+    array([ 0.055...,  0.166...,  0.555...])
+    >>> Lg[1:4]
+    array([ 0.25,  0.75,  2.5 ])
+    >>> t = [1,2,np.nan,7,-8]
+    >>> Lc(t) # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+     ...
+    ValueError: x contained negative number
+    """
+    assert len(x) > 0, "x is empty"
+    a = np.array(x, dtype=float)
+    a = a[np.isfinite(a)]
+    if a.min() < 0:
+        raise ValueError("x contained negative number")
+    a.sort(kind='mergesort')
+    a_len = float(len(a))
+    p = np.arange(1, a_len + 1) / a_len
+    p = np.append([0], p)
+    L = a.cumsum() / a.sum()
+    L = np.append([0], L)
+    Lg = L * np.mean(a)
+    return p, L, Lg
+
+
+def lorenz_curve(df, out_file):
+    p, L, Lg = Lc(df.sum(axis=1).values)
+    f, ax = plt.subplots(figsize=(8, 6))
+    plt.plot(p, L, axes=ax)
+    plt.plot([0,1], axes=ax, color='black', linestyle="--")
+    ax.set(title="Distribution of Barcode Mapped Reads")
+    f.savefig(out_file, bbox_inches='tight')
+    plt.close()
+
+
+def compile_demultiplex_stats(runfolder, out_dir):
+    stats_xml = os.path.join(os.path.abspath(out_dir), "Stats", "DemultiplexingStats.xml")
+    df = xml_to_df(stats_xml)
+    if df:
+        df.sum().to_csv(os.path.join(runfolder, "demultiplexing_stats.csv"))
+        dft = df.T.drop("Undetermined", axis=0)
+        barplot_distribution(dft, os.path.join(runfolder, "demultiplexing_distribution.pdf"))
+        lorenz_curve(dft, os.path.join(runfolder, "demultiplexing_distribution_curve.pdf"))
 
 
 @click.command(context_settings=dict(
@@ -232,7 +290,7 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
     if not call_status:
         logger.critical("Something went wrong when trying to convert the .bcl files.")
         sys.exit(1)
-    run_stats = compile_demultiplex_stats(runfolder, fastq_dir)
+    compile_demultiplex_stats(runfolder, fastq_dir)
     # write file with sample names for downstream parallelization
     with open(os.path.join(fastq_dir, "SAMPLES"), 'w') as ofh:
         print(*samples, sep="\n", file=ofh)
