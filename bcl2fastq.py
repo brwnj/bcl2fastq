@@ -295,7 +295,7 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
         print(*samples, sep="\n", file=ofh)
     # cleanup the output directory
     for f in glob(os.path.join(fastq_dir, "*.fastq*")):
-        if not f.endswith(".gz") or not f.endswith(".fastq"):
+        if not f.endswith(".gz") and not f.endswith(".fastq"):
             continue
         filename = os.path.basename(f)
         if filename.startswith("Undetermined_") and not keep_tmp:
