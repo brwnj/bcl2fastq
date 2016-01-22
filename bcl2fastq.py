@@ -206,7 +206,7 @@ def lorenz_curve(df, out_file):
 def compile_demultiplex_stats(runfolder, out_dir):
     stats_xml = os.path.join(os.path.abspath(out_dir), "Stats", "DemultiplexingStats.xml")
     df = xml_to_df(stats_xml)
-    if df:
+    if df is not None:
         df.sum().to_csv(os.path.join(runfolder, "demultiplexing_stats.csv"))
         dft = df.T.drop("Undetermined", axis=0)
         barplot_distribution(dft, os.path.join(runfolder, "demultiplexing_distribution.pdf"))
@@ -282,14 +282,14 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
         logger.critical("Run did not complete as planned. Exiting.")
         sys.exit(1)
     fastq_dir = os.path.abspath(os.path.join(runfolder, "Data", "Intensities", "BaseCalls"))
-    cmd_args = ["bcl2fastq", "-r", loading, "-d", demultiplexing, "-p",
-                processing, "-w", writing, "--barcode-mismatches",
-                barcode_mismatches, "--no-lane-splitting",
-                "-R", runfolder] + list(bcl2fastq_args)
-    call_status = run_bcl2fastq(runfolder, cmd_args)
-    if not call_status:
-        logger.critical("Something went wrong when trying to convert the .bcl files.")
-        sys.exit(1)
+    # cmd_args = ["bcl2fastq", "-r", loading, "-d", demultiplexing, "-p",
+    #             processing, "-w", writing, "--barcode-mismatches",
+    #             barcode_mismatches, "--no-lane-splitting",
+    #             "-R", runfolder] + list(bcl2fastq_args)
+    # call_status = run_bcl2fastq(runfolder, cmd_args)
+    # if not call_status:
+    #     logger.critical("Something went wrong when trying to convert the .bcl files.")
+    #     sys.exit(1)
     compile_demultiplex_stats(runfolder, fastq_dir)
     # write file with sample names for downstream parallelization
     with open(os.path.join(fastq_dir, "SAMPLES"), 'w') as ofh:
