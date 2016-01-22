@@ -150,9 +150,9 @@ def xml_to_df(stats_xml):
 
 
 def barplot_distribution(df, out_file):
+    dft = df.T.drop("Undetermined", axis=0)
     width = max([len(dft) / 10, 12])
     f, ax = plt.subplots(figsize=(width, 6))
-    dft = df.T.drop("Undetermined", axis=0)
     dft.plot(kind='bar', stacked=True, ax=ax)
     f.savefig(out_file, bbox_inches='tight')
     plt.close()
