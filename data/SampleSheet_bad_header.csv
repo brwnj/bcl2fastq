@@ -19,7 +19,7 @@ Adapter,CTGTCTCTTATACACATCT,,,,,,,,
 ,,,,,,,,,
 ,,,,,,,,,
 [Data],,,,,,,,,
-Sample_ID,Sample_Name,Sample_Plate,Sample_Well,I7_Index_ID,index,I5_Index_ID,index2,Sample_Project,Description
+Sample_ID,Sample_Name,Sample_Plate,Sample_Well,I7_Index_ID,index,I5_Index_ID,index2,sample_project,Description
 s1,s1,p1,A01,N701,TAAGGCGA,S502,CTCTCTAT,,
 s2,s2,p1,B01,N701,TAAGGCGA,S503,TATCCTCT,,
 s3,s3,p1,C01,N701,TAAGGCGA,S505,GTAAGGAG,,

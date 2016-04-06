@@ -14,6 +14,7 @@ import numpy as np
 import os
 import pandas as pd
 import seaborn as sns
+import shutil
 import string
 import subprocess as sp
 import sys
@@ -25,27 +26,27 @@ from xml.etree import cElementTree as ET
 
 sns.set_context('paper')
 sns.set_style('whitegrid', {'axes.linewidth': 1})
-
 logging.basicConfig(level=logging.INFO,
                     format="[%(asctime)s - %(levelname)s] %(message)s",
                     datefmt="%Y-%m-%d %H:%M:%S")
-logger = logging.getLogger(__name__)
 
 
 def get_samplesheet(path):
     s = os.path.join(os.path.abspath(path), "SampleSheet.csv")
-    logger.info('Using %s', s)
+    logging.info('Using %s', s)
     if not os.path.exists(s):
          raise OSError(2, 'No such file', s)
     return s
 
 
 def process_samplesheet(samplesheet, reverse_complement):
-    logger.info("Processing %s", samplesheet)
+    """"""
+    logging.info("Processing %s", samplesheet)
     _complement = string.maketrans("ATCG", "TAGC")
     complement = lambda seq: seq.translate(_complement)
     samples = []
     date = datetime.now().strftime("%Y-%m-%d-%H%M-%S")
+    samplesheet_backup = "%s.%s.bak" % (samplesheet, date)
     try:
         start = False
         sample_project_idx = 0
@@ -62,10 +63,13 @@ def process_samplesheet(samplesheet, reverse_complement):
                     start = True
                     sample_project_idx = toks.index("Sample_Project")
                     if reverse_complement:
-                        try:
+                        if "index2" in toks:
                             index2_idx = toks.index("index2")
-                        except ValueError:
+                        elif "Index2" in toks:
                             index2_idx = toks.index("Index2")
+                        else:
+                            logging.warn("There is no Index2 to reverse complement")
+
             elif toks[0]:
                 # convert underscores to dashes
                 toks[0] = toks[0].replace("_", "-").replace(".", "-")
@@ -75,16 +79,21 @@ def process_samplesheet(samplesheet, reverse_complement):
                 samples.append(toks[0])
 
                 # only adjust on known index
-                if reverse_complement:
+                if reverse_complement and index2_idx:
                     toks[index2_idx] = complement(toks[index2_idx])[::-1]
             # remove blank lines at end of table
             else:
                 break
             print(",".join([t.strip() for t in toks]))
-    finally:
         fileinput.close()
+    except Exception as e:
+        # move the original back
+        fileinput.close()
+        shutil.move(samplesheet_backup, samplesheet)
+        logging.exception("Processing of %s failed", samplesheet)
+        raise
     run = os.path.basename(os.path.dirname(samplesheet))
-    logger.info('Found %d samples for run %s', len(samples), run)
+    logging.info('Found %d samples for run %s', len(samples), run)
     return samples
 
 
@@ -96,12 +105,12 @@ def wait_for_completion(path, no_wait):
     notify = True
     while not os.path.exists(status_xml):
         if notify:
-            logger.info("Waiting on run completion.")
+            logging.info("Waiting on run completion.")
             notify = False
         time.sleep(sleep_time)
         if sleep_time < 60:
             sleep_time += 1
-    logger.info("Run complete.")
+    logging.info("Run complete.")
     try:
         doc = ET.parse(status_xml)
         run_status = doc.find("CompletionStatus").text
@@ -115,7 +124,7 @@ def wait_for_completion(path, no_wait):
 def run_bcl2fastq(runfolder, args):
     runlog = os.path.join(runfolder, "bcl2fastq.log")
     cmd = " ".join(map(str, args))
-    logger.info("Converting .bcl to .fastq using: $>%s", cmd)
+    logging.info("Converting .bcl to .fastq using: $>%s", cmd)
     with open(runlog, 'w') as fh:
         # bcl2fastq version info...
         sp.check_call("bcl2fastq --version 2>&1 | tail -2 | head -1",
@@ -123,13 +132,13 @@ def run_bcl2fastq(runfolder, args):
                       stderr=fh,
                       shell=True)
         sp.check_call(cmd, stdout=fh, stderr=fh, shell=True)
-    logger.info(".bcl Conversion successful")
+    logging.info(".bcl Conversion successful")
     return True
 
 
 def xml_to_df(stats_xml):
     if os.path.exists(stats_xml):
-        logger.info("Generating demultiplexing stats file")
+        logging.info("Generating demultiplexing stats file")
         doc = ET.parse(stats_xml)
         root = doc.getroot()
         counts = {}
@@ -145,7 +154,7 @@ def xml_to_df(stats_xml):
                     counts[name][lane_name] = count
         return pd.DataFrame(counts)
     else:
-        logger.warning('Could not find file %s', stats_xml)
+        logging.warning('Could not find file %s', stats_xml)
         return None
 
 
@@ -269,16 +278,16 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
     try:
         samplesheet = get_samplesheet(runfolder)
     except OSError:
-        logger.critical("Could not find SampleSheet.csv")
+        logging.critical("Could not find SampleSheet.csv")
         sys.exit(1)
     samples = process_samplesheet(samplesheet, reverse_complement)
     if len(samples) == 0:
-        logger.critical(("No samples were found in the SampleSheet. "
+        logging.critical(("No samples were found in the SampleSheet. "
                          "Please check its formatting."))
         sys.exit(1)
     completion_success = wait_for_completion(runfolder, no_wait)
     if not completion_success:
-        logger.critical("Run did not complete as planned. Exiting.")
+        logging.critical("Run did not complete as planned. Exiting.")
         sys.exit(1)
     fastq_dir = os.path.abspath(os.path.join(runfolder, "Data", "Intensities", "BaseCalls"))
     cmd_args = ["bcl2fastq", "-r", loading, "-d", demultiplexing, "-p",
@@ -287,7 +296,7 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
                 "-R", runfolder] + list(bcl2fastq_args)
     call_status = run_bcl2fastq(runfolder, cmd_args)
     if not call_status:
-        logger.critical("Something went wrong when trying to convert the .bcl files.")
+        logging.critical("Something went wrong when trying to convert the .bcl files.")
         sys.exit(1)
     compile_demultiplex_stats(runfolder, fastq_dir)
     # write file with sample names for downstream parallelization

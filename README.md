@@ -81,6 +81,10 @@ Options:
 + [click](http://click.pocoo.org/4/)
 + [pandas](http://pandas.pydata.org/)
 + [bcl2fastq2](http://support.illumina.com/downloads/bcl2fastq_conversion_software.html)
++ matplotlib
++ numpy
++ seaborn
+
 
 # Install
 ```
