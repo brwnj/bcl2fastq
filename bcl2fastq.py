@@ -310,10 +310,13 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
         if filename.startswith("Undetermined_") and not keep_tmp:
             os.remove(f)
         else:
-            # AD-332-A10_S1_R1_001.fastq.gz --> AD-332-A10_R1.fastq.gz
-            sample_name, sample_number, read_index, ext = filename.split("_")
-            new_file_name = "%s_%s.%s" % (sample_name, read_index, ext.partition('.')[-1])
-            os.rename(f, os.path.join(os.path.dirname(f), new_file_name))
+            try:
+                # AD-332-A10_S1_R1_001.fastq.gz --> AD-332-A10_R1.fastq.gz
+                sample_name, sample_number, read_index, ext = filename.split("_")
+                new_file_name = "%s_%s.%s" % (sample_name, read_index, ext.partition('.')[-1])
+                os.rename(f, os.path.join(os.path.dirname(f), new_file_name))
+            except ValueError:
+                logging.warn("Renaming skipped: the output dir contains conflicting FASTQ files")
 
 
 if __name__ == '__main__':
