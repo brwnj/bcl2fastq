@@ -124,15 +124,18 @@ def wait_for_completion(path, no_wait):
 def run_bcl2fastq(runfolder, args):
     runlog = os.path.join(runfolder, "bcl2fastq.log")
     cmd = " ".join(map(str, args))
-    logging.info("Converting .bcl to .fastq using: $>%s", cmd)
-    with open(runlog, 'w') as fh:
-        # bcl2fastq version info...
-        sp.check_call("bcl2fastq --version 2>&1 | tail -2 | head -1",
-                      stdout=fh,
-                      stderr=fh,
-                      shell=True)
-        sp.check_call(cmd, stdout=fh, stderr=fh, shell=True)
-    logging.info(".bcl Conversion successful")
+    if os.path.exists(runlog):
+        logging.info("A log exists for %s, so we're skipping the .bcl conversion" % runfolder)
+    else:
+        logging.info("Converting .bcl to .fastq using: $>%s", cmd)
+        with open(runlog, 'w') as fh:
+            # bcl2fastq version info...
+            sp.check_call("bcl2fastq --version 2>&1 | tail -2 | head -1",
+                          stdout=fh,
+                          stderr=fh,
+                          shell=True)
+            sp.check_call(cmd, stdout=fh, stderr=fh, shell=True)
+        logging.info(".bcl Conversion successful")
     return True
 
 
@@ -316,7 +319,7 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
                 new_file_name = "%s_%s.%s" % (sample_name, read_index, ext.partition('.')[-1])
                 os.rename(f, os.path.join(os.path.dirname(f), new_file_name))
             except ValueError:
-                logging.warn("Renaming skipped: the output dir contains conflicting FASTQ files")
+                logging.warn("Renaming skipped: the output dir contains conflicting FASTQ file for %s" % f)
 
 
 if __name__ == '__main__':
