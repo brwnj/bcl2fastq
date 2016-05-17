@@ -125,7 +125,7 @@ def run_bcl2fastq(runfolder, args):
     runlog = os.path.join(runfolder, "bcl2fastq.log")
     cmd = " ".join(map(str, args))
     if os.path.exists(runlog):
-        logging.info("A log exists for %s, so we're skipping the .bcl conversion" % runfolder)
+        logging.info("A log exists for %s, so we're skipping the .bcl conversion" % os.path.abspath(runfolder))
     else:
         logging.info("Converting .bcl to .fastq using: $>%s", cmd)
         with open(runlog, 'w') as fh:
@@ -219,7 +219,10 @@ def compile_demultiplex_stats(runfolder, out_dir):
     df = xml_to_df(stats_xml)
     if df is not None:
         df.sum().to_csv(os.path.join(runfolder, "demultiplexing_stats.csv"))
-        dft = df.T.drop("Undetermined", axis=0)
+        try:
+            dft = df.transpose().drop("Undetermined", axis=0)
+        except ValueError:
+            dft = df.transpose()
         barplot_distribution(dft, os.path.join(runfolder, "demultiplexing_distribution.pdf"))
         lorenz_curve(dft, os.path.join(runfolder, "demultiplexing_distribution_curve.pdf"))
 
