@@ -283,7 +283,12 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
     except OSError:
         logging.critical("Could not find SampleSheet.csv")
         sys.exit(1)
-    samples = process_samplesheet(samplesheet, reverse_complement)
+    if os.path.exists(os.path.join(runfolder, "bcl2fastq.log")):
+        # this run has already been converted, so don't reverse complement
+        # just get the sample names
+        samples = process_samplesheet(samplesheet, False)
+    else:
+        samples = process_samplesheet(samplesheet, reverse_complement)
     if len(samples) == 0:
         logging.critical(("No samples were found in the SampleSheet. "
                          "Please check its formatting."))
