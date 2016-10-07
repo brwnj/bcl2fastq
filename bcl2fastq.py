@@ -49,7 +49,6 @@ def process_samplesheet(samplesheet, reverse_complement):
     samplesheet_backup = "%s.%s.bak" % (samplesheet, date)
     try:
         start = False
-        sample_project_idx = 0
         index2_idx = None
         # strip whitespace and rewrite file in place
         for toks in fileinput.input(samplesheet,
@@ -61,7 +60,6 @@ def process_samplesheet(samplesheet, reverse_complement):
                 # table header processing
                 if toks[0] == "Sample_ID":
                     start = True
-                    sample_project_idx = toks.index("Sample_Project")
                     if reverse_complement:
                         if "index2" in toks:
                             index2_idx = toks.index("index2")
@@ -75,7 +73,6 @@ def process_samplesheet(samplesheet, reverse_complement):
                 toks[0] = toks[0].replace("_", "-").replace(".", "-")
                 toks[1] = toks[0]
                 # will need to pull sample owner before overwriting
-                toks[sample_project_idx] = ""
                 samples.append(toks[0])
 
                 # only adjust on known index
