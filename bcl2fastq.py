@@ -15,13 +15,13 @@ import os
 import pandas as pd
 import seaborn as sns
 import shutil
+import six
 import string
 import subprocess as sp
 import sys
 import time
 from datetime import datetime
 from glob import glob
-from itertools import izip_longest
 from xml.etree import cElementTree as ET
 
 sns.set_context('paper')
@@ -42,8 +42,13 @@ def get_samplesheet(path):
 def process_samplesheet(samplesheet, reverse_complement):
     """"""
     logging.info("Processing %s", samplesheet)
-    _complement = string.maketrans("ATCG", "TAGC")
+
+    if six.PY2:
+        _complement = string.maketrans("ATCG", "TAGC")
+    else:
+        _complement = str.maketrans("ATCG", "TAGC")
     complement = lambda seq: seq.translate(_complement)
+
     samples = []
     date = datetime.now().strftime("%Y-%m-%d-%H%M-%S")
     samplesheet_backup = "%s.%s.bak" % (samplesheet, date)
@@ -81,7 +86,7 @@ def process_samplesheet(samplesheet, reverse_complement):
             # remove blank lines at end of table
             else:
                 break
-            print(",".join([t.strip() for t in toks]))
+            print(*[t.strip() for t in toks], sep=",")
         fileinput.close()
     except Exception as e:
         # move the original back
@@ -277,6 +282,9 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
               no_wait, bcl2fastq_args):
     """Runs bcl2fastq2, creating fastqs and concatenating fastqs across lanes.
     Undetermined files are deleted by default.
+
+    Any arguments not matching those outlined below will be sent to the
+    `bcl2fastq` call.
     """
     try:
         samplesheet = get_samplesheet(runfolder)
