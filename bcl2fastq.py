@@ -20,10 +20,14 @@ import string
 import subprocess as sp
 import sys
 import time
+import warnings
 from datetime import datetime
 from glob import glob
+from matplotlib.cbook import MatplotlibDeprecationWarning
 from xml.etree import cElementTree as ET
 
+
+warnings.simplefilter('ignore', MatplotlibDeprecationWarning)
 sns.set_context('paper')
 sns.set_style('whitegrid', {'axes.linewidth': 1})
 logging.basicConfig(level=logging.INFO,
@@ -294,6 +298,8 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
     if os.path.exists(os.path.join(runfolder, "bcl2fastq.log")):
         # this run has already been converted, so don't reverse complement
         # just get the sample names
+        if reverse_complement:
+            logging.warning("reverse complementing has been skipped as a log file (bcl2fastq.log) was found")
         samples = process_samplesheet(samplesheet, False)
     else:
         samples = process_samplesheet(samplesheet, reverse_complement)
