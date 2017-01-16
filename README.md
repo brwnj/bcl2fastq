@@ -4,18 +4,19 @@ concatenates reads across lanes into R1 and R2 by sample. By default,
 Undetermined and reads across individual lanes are removed on success and
 all reads are placed in BaseCalls directory.
 
-Tested on `bcl2fastq2` Conversion Software v2.17 and Python 2.7.
+Tested on `bcl2fastq2` Conversion Software v2.17.1.14 and Python 2.7 and 3.5.
 
 # Running
 ```
-$ cd /mnt/ilmn/150212_NS500409_0021_AH3CHYBGXX
-$ bcl_to_fastq --reverse-complement
-Info      : Using /mnt/ilmn/150212_NS500409_0021_AH3CHYBGXX/SampleSheet.csv
-Info      : Found 48 samples for run 150212_NS500409_0021_AH3CHYBGXX
-Info      : Run complete.
-Info      : Converting .bcl to .fastq using: $>bcl2fastq -r 12 -d 12 -p 24 -w 12 --barcode-mismatches 0 -R '.'
-Info      : Conversion successful
-Info      : Generating demultiplexing stats file ./demultiplexing_stats.csv
+$ cd /data/nextseq/170111_NS500409_0130_AHHGTMAFXX/SampleSheet.csv
+$ bcl_to_fastq --reverse-complement --processing 80
+[2017-01-14 19:07:57 - INFO] Using /data/nextseq/170111_NS500409_0130_AHHGTMAFXX/SampleSheet.csv
+[2017-01-14 19:07:57 - INFO] Processing /data/nextseq/170111_NS500409_0130_AHHGTMAFXX/SampleSheet.csv
+[2017-01-14 19:07:58 - INFO] Found 384 samples for run 170111_NS500409_0130_AHHGTMAFXX
+[2017-01-14 19:07:58 - INFO] Run complete.
+[2017-01-14 19:07:58 - INFO] Converting .bcl to .fastq using: $>bcl2fastq -r 12 -d 12 -p 80 -w 12 --barcode-mismatches 0 --no-lane-splitting -R .
+[2017-01-14 20:54:02 - INFO] .bcl Conversion successful
+[2017-01-14 20:54:02 - INFO] Generating demultiplexing stats file
 ```
 
 # Results
@@ -23,13 +24,19 @@ In the run folder, SampleSheet.csv.bak is a backup copy of the original
 SampleSheet.csv and is accompanied by:
 
 ###bcl2fastq.log
+
 ```
 $ head bcl2fastq.log
-bcl2fastq v2.15.0.4
-2015-03-09 16:01:59 [7fde98ae2780] Command-line invocation: bcl2fastq -r 12 -d 12 -p 24 -w 12 --barcode-mismatches 0 -R '.'
-2015-03-09 16:01:59 [7fde98ae2780] INFO: Minimum log level: INFO
-2015-03-09 16:01:59 [7fde98ae2780] INFO: Runfolder path: '.'
-2015-03-09 16:01:59 [7fde98ae2780] INFO: Input path: './Data/Intensities/BaseCalls/'
+2017-01-14 19:07:58 [f82880] INFO: Create FASTQs for index reads: NO
+BCL to FASTQ file converter
+bcl2fastq v2.17.1.14
+Copyright (c) 2007-2015 Illumina, Inc.
+
+2017-01-14 19:07:58 [16f2880] Command-line invocation: bcl2fastq -r 12 -d 12 -p 80 -w 12 --barcode-mismatches 0 --no-lane-splitting -R .
+2017-01-14 19:07:58 [16f2880] INFO: Minimum log level: INFO
+2017-01-14 19:07:58 [16f2880] INFO: Sample sheet: './SampleSheet.csv'
+2017-01-14 19:07:59 [16f2880] INFO: Runfolder path: '.'
+2017-01-14 19:07:59 [16f2880] INFO: Input path: './Data/Intensities/BaseCalls/'
 etc...
 ```
 
