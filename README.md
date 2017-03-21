@@ -23,7 +23,7 @@ $ bcl_to_fastq --reverse-complement --processing 80
 In the run folder, SampleSheet.csv.bak is a backup copy of the original
 SampleSheet.csv and is accompanied by:
 
-###bcl2fastq.log
+## bcl2fastq.log
 
 ```
 $ head bcl2fastq.log
@@ -40,7 +40,7 @@ Copyright (c) 2007-2015 Illumina, Inc.
 etc...
 ```
 
-###demultiplexing_stats.csv
+## demultiplexing_stats.csv
 ```
 $ head demultiplexing_stats.csv
 AAA003-K10,102570
