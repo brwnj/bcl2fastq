@@ -77,7 +77,7 @@ def process_samplesheet(samplesheet, new_samplesheet, reverse_complement=False,
     start = False
     index2_idx = None
 
-    with open(samplesheet) as ifh, open(new_samplesheet, "w") as ofh:
+    with open(samplesheet, "rU" if six.PY2 else "r") as ifh, open(new_samplesheet, "w") as ofh:
         for line in ifh:
             toks = line.strip().split(",")
             if not start:
