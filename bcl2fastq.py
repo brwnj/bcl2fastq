@@ -155,7 +155,7 @@ def run_bcl2fastq(runfolder, args, determine=False):
 
 
 def run_determination_step(runfolder, samplesheet, loading, demultiplexing,
-    processing, writing, barcode_mismatches):
+                           processing, writing, barcode_mismatches):
     # set up a temporary working directory
     tmpd = tempfile.mkdtemp(dir=runfolder)
 
@@ -180,8 +180,8 @@ def run_determination_step(runfolder, samplesheet, loading, demultiplexing,
     # try the original
     tmpd = tempfile.mkdtemp(dir=runfolder)
     orig_samplesheet = "%s.%s.orig.csv" % (samplesheet, date)
-    process_samplesheet(samplesheet, orig_samplesheet,
-                        reverse_complement=False, determine=True)
+    samples = process_samplesheet(samplesheet, orig_samplesheet,
+                                  reverse_complement=False, determine=True)
 
     # run the first set
     cmd_args = ["bcl2fastq", "--tiles", "11105", "--no-lane-splitting",
@@ -199,7 +199,7 @@ def run_determination_step(runfolder, samplesheet, loading, demultiplexing,
     if rc_file_size > orig_file_size:
         logging.info("Using reverse complement of Index2 to demultiplex")
         os.remove(orig_samplesheet)
-        return rc_samplesheet
+        return samples, rc_samplesheet
     elif rc_file_size == orig_file_size:
         logging.critical(("The original and reverse complemented barcodes "
                           "yielded the same number of demultiplexed reads."))
@@ -207,7 +207,7 @@ def run_determination_step(runfolder, samplesheet, loading, demultiplexing,
     else:
         logging.info("Using the original barcodes to demultiplex")
         os.remove(rc_samplesheet)
-        return orig_samplesheet
+        return samples, orig_samplesheet
 
 
 def xml_to_df(stats_xml):
@@ -355,10 +355,15 @@ def compile_demultiplex_stats(runfolder, out_dir):
               default=False,
               show_default=True,
               help="use barcodes in samplesheet as well as the reverse complement of index 2, then demultiplex with best")
+@click.option("--no-cleanup",
+              is_flag=True,
+              default=False,
+              show_default=True,
+              help="skip all cleaning up -- do not rename fastq output and do not delete undetermined files")
 @click.argument('bcl2fastq_args', nargs=-1, type=click.UNPROCESSED)
 def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
               barcode_mismatches, keep_tmp, reverse_complement,
-              no_wait, overwrite, determine, bcl2fastq_args):
+              no_wait, overwrite, determine, no_cleanup, bcl2fastq_args):
     """Runs bcl2fastq2, creating fastqs and concatenating fastqs across lanes.
     Undetermined files are deleted by default.
 
@@ -402,10 +407,10 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
 
     # check original and reverse complement using a few tiles
     if determine:
-        new_samplesheet = run_determination_step(runfolder, samplesheet,
-                                                 loading, demultiplexing,
-                                                 processing, writing,
-                                                 barcode_mismatches)
+        samples, new_samplesheet = run_determination_step(runfolder, samplesheet,
+                                                          loading, demultiplexing,
+                                                          processing, writing,
+                                                          barcode_mismatches)
 
     # run bcl2fastq on the run folder
     cmd_args = ["bcl2fastq", "--sample-sheet", new_samplesheet,
@@ -427,26 +432,28 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
         print(*samples, sep="\n", file=ofh)
 
     # cleanup the output directory
-    for f in glob(os.path.join(fastq_dir, "*.fastq*")):
-        if not f.endswith(".gz") and not f.endswith(".fastq"):
-            continue
-        filename = os.path.basename(f)
-        if filename.startswith("Undetermined_") and not keep_tmp:
-            logging.info("Deleting %s" % filename)
-            os.remove(f)
-        else:
-            try:
-                # AD-332-A10_S1_R1_001.fastq.gz --> AD-332-A10_R1.fastq.gz
-                sample_name, sample_number, read_index, ext = filename.split("_")
-                # munge the file name
-                new_file_name = "%s_%s.%s" % (sample_name, read_index, ext.partition('.')[-1])
-                # prepend the path
-                new_file_name = os.path.join(os.path.dirname(f), new_file_name)
-                if overwrite and os.path.exists(new_file_name):
-                    os.remove(new_file_name)
-                os.rename(f, new_file_name)
-            except ValueError:
-                logging.warn("Renaming skipped: the output dir contains conflicting FASTQ file for %s" % f)
+    if not no_cleanup:
+        logging.info("Cleaning up output directory [%s]" % fastq_dir)
+        for f in glob(os.path.join(fastq_dir, "*.fastq*")):
+            if not f.endswith(".gz") and not f.endswith(".fastq"):
+                continue
+            filename = os.path.basename(f)
+            if filename.startswith("Undetermined_") and not keep_tmp:
+                logging.info("Deleting %s" % filename)
+                os.remove(f)
+            else:
+                try:
+                    # AD-332-A10_S1_R1_001.fastq.gz --> AD-332-A10_R1.fastq.gz
+                    sample_name, sample_number, read_index, ext = filename.split("_")
+                    # munge the file name
+                    new_file_name = "%s_%s.%s" % (sample_name, read_index, ext.partition('.')[-1])
+                    # prepend the path
+                    new_file_name = os.path.join(os.path.dirname(f), new_file_name)
+                    if overwrite and os.path.exists(new_file_name):
+                        os.remove(new_file_name)
+                    os.rename(f, new_file_name)
+                except ValueError:
+                    logging.warn("Renaming skipped: the output dir contains conflicting FASTQ file for %s" % f)
 
 
 if __name__ == '__main__':
