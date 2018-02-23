@@ -170,6 +170,7 @@ def run_determination_step(input_dir, runfolder, output_dir, samplesheet,
     # run the first set
     # 11105 is small subset of tiles I found to generally work
     cmd_args = ["bcl2fastq", "--tiles", "11105", "--no-lane-splitting",
+                "--runfolder-dir", runfolder,
                 "--output-dir", tmpd,
                 "--barcode-mismatches", barcode_mismatches,
                 "--loading-threads", loading,
@@ -191,6 +192,7 @@ def run_determination_step(input_dir, runfolder, output_dir, samplesheet,
 
     # run the first set
     cmd_args = ["bcl2fastq", "--tiles", "11105", "--no-lane-splitting",
+                "--runfolder-dir", runfolder,
                 "--output-dir", tmpd,
                 "--barcode-mismatches", barcode_mismatches,
                 "--loading-threads", loading,
