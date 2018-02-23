@@ -42,11 +42,13 @@ logging.basicConfig(level=logging.INFO,
 
 
 def get_samplesheet(path):
-    s = os.path.join(os.path.abspath(path), "SampleSheet.csv")
-    logging.info("Using %s", s)
-    if not os.path.exists(s):
-         raise OSError(2, "No such file", s)
-    return s
+    ss = path
+    if os.path.isdir(ss):
+        ss = os.path.join(os.path.abspath(path), "SampleSheet.csv")
+    logging.info("Using %s", ss)
+    if not os.path.exists(ss):
+        raise OSError(2, "No such file", ss)
+    return ss
 
 
 def get_file_sizes(output_dir):
@@ -154,10 +156,11 @@ def run_bcl2fastq(runfolder, args, determine=False):
     logging.info(".bcl Conversion successful")
 
 
-def run_determination_step(runfolder, samplesheet, loading, demultiplexing,
-                           processing, writing, barcode_mismatches):
+def run_determination_step(input_dir, runfolder, output_dir, samplesheet,
+                           loading, demultiplexing, processing, writing,
+                           barcode_mismatches):
     # set up a temporary working directory
-    tmpd = tempfile.mkdtemp(dir=runfolder)
+    tmpd = tempfile.mkdtemp(dir=output_dir if output_dir else runfolder)
 
     date = datetime.now().strftime("%Y-%m-%d-%H%M-%S")
     rc_samplesheet = "%s.%s.rc.csv" % (samplesheet, date)
@@ -165,6 +168,7 @@ def run_determination_step(runfolder, samplesheet, loading, demultiplexing,
                         determine=True)
 
     # run the first set
+    # 11105 is small subset of tiles I found to generally work
     cmd_args = ["bcl2fastq", "--tiles", "11105", "--no-lane-splitting",
                 "--output-dir", tmpd,
                 "--barcode-mismatches", barcode_mismatches,
@@ -173,12 +177,14 @@ def run_determination_step(runfolder, samplesheet, loading, demultiplexing,
                 "--processing-threads", processing,
                 "--writing-threads", writing,
                 "--sample-sheet", rc_samplesheet]
+    if input_dir:
+        cmd_args.extend(["--input-dir", input_dir])
     run_bcl2fastq(tmpd, cmd_args, determine=True)
     rc_file_size = get_file_sizes(tmpd)
     shutil.rmtree(tmpd)
 
     # try the original
-    tmpd = tempfile.mkdtemp(dir=runfolder)
+    tmpd = tempfile.mkdtemp(dir=output_dir if output_dir else runfolder)
     orig_samplesheet = "%s.%s.orig.csv" % (samplesheet, date)
     samples = process_samplesheet(samplesheet, orig_samplesheet,
                                   reverse_complement=False, determine=True)
@@ -192,6 +198,8 @@ def run_determination_step(runfolder, samplesheet, loading, demultiplexing,
                 "--processing-threads", processing,
                 "--writing-threads", writing,
                 "--sample-sheet", orig_samplesheet]
+    if input_dir:
+        cmd_args.extend(["--input-dir", input_dir])
     run_bcl2fastq(tmpd, cmd_args, determine=True)
     orig_file_size = get_file_sizes(tmpd)
     shutil.rmtree(tmpd)
@@ -301,10 +309,21 @@ def compile_demultiplex_stats(runfolder, out_dir):
 @click.command(context_settings=dict(
                help_option_names=['-h', '--help'],
                ignore_unknown_options=True,))
-@click.option("--runfolder",
-              default=".",
+@click.option("-i", "--input-dir",
+              default=None,
+              show_default=True,
+              help="path to input directory; default is RUNFOLDER-DIR/Data/Intensities/BaseCalls")
+@click.option("-R", "--runfolder-dir",
+              default=os.path.realpath("."),
               show_default=True,
               help="path to directory containing run data")
+@click.option("-o",
+              "--output-dir",
+              default=None,
+              help="path to demultiplexed output; default is same as INPUT-DIR")
+@click.option("--sample-sheet",
+              default=None,
+              help="file path to sample sheet; default is RUNFOLDER-DIR/SampleSheet.csv")
 @click.option("--loading",
               default=12,
               type=int,
@@ -361,9 +380,10 @@ def compile_demultiplex_stats(runfolder, out_dir):
               show_default=True,
               help="skip all cleaning up -- do not rename fastq output and do not delete undetermined files")
 @click.argument('bcl2fastq_args', nargs=-1, type=click.UNPROCESSED)
-def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
-              barcode_mismatches, keep_tmp, reverse_complement,
-              no_wait, overwrite, determine, no_cleanup, bcl2fastq_args):
+def bcl2fastq(input_dir, runfolder_dir, output_dir, sample_sheet, loading,
+              demultiplexing, processing, writing, barcode_mismatches,
+              keep_tmp, reverse_complement, no_wait, overwrite, determine,
+              no_cleanup, bcl2fastq_args):
     """Runs bcl2fastq2, creating fastqs and concatenating fastqs across lanes.
     Undetermined files are deleted by default.
 
@@ -371,9 +391,12 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
     `bcl2fastq` call.
     """
     try:
-        samplesheet = get_samplesheet(runfolder)
+        if not sample_sheet:
+            samplesheet = get_samplesheet(runfolder_dir)
+        else:
+            samplesheet = get_samplesheet(sample_sheet)
     except OSError:
-        logging.critical("Could not find SampleSheet.csv")
+        logging.critical("Could not find sample sheet CSV.")
         sys.exit(1)
 
     # will wait on the run to complete without ever checking for samples in
@@ -382,11 +405,12 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
         # new samplesheet written each time leaving the original unchanged
         date = datetime.now().strftime("%Y-%m-%d-%H%M-%S")
         new_samplesheet = "%s.%s.csv" % (samplesheet, date)
-        if os.path.exists(os.path.join(runfolder, "bcl2fastq.log")):
+        if os.path.exists(os.path.join(runfolder_dir, "bcl2fastq.log")):
             # this run has already been converted, so don't reverse complement
             # just get the sample names
             if reverse_complement:
-                logging.warning("reverse complementing has been skipped as a log file (bcl2fastq.log) was found")
+                logging.warning(("reverse complementing has been skipped as "
+                                 "a log file (bcl2fastq.log) was found"))
             samples = process_samplesheet(samplesheet, new_samplesheet, False)
         else:
             samples = process_samplesheet(samplesheet, new_samplesheet,
@@ -397,19 +421,29 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
             sys.exit(1)
 
     # check for 'CompletedAsPlanned' in RunCompletionStatus.xml
-    completion_success = wait_for_completion(runfolder, no_wait)
+    completion_success = wait_for_completion(runfolder_dir, no_wait)
     if not completion_success:
         logging.critical("Run did not complete as planned. Exiting.")
         sys.exit(1)
 
     # set where we're going to dump the result files
-    fastq_dir = os.path.abspath(os.path.join(runfolder, "Data", "Intensities", "BaseCalls"))
+    if output_dir:
+        fastq_dir = os.path.realpath(output_dir)
+    else:
+        fastq_dir = os.path.abspath(os.path.join(runfolder_dir, "Data",
+                                                 "Intensities", "BaseCalls"))
 
     # check original and reverse complement using a few tiles
     if determine:
-        samples, new_samplesheet = run_determination_step(runfolder, samplesheet,
-                                                          loading, demultiplexing,
-                                                          processing, writing,
+        # need to add input_dir, output_dir
+        samples, new_samplesheet = run_determination_step(input_dir,
+                                                          runfolder_dir,
+                                                          output_dir,
+                                                          samplesheet,
+                                                          loading,
+                                                          demultiplexing,
+                                                          processing,
+                                                          writing,
                                                           barcode_mismatches)
 
     # run bcl2fastq on the run folder
@@ -420,11 +454,15 @@ def bcl2fastq(runfolder, loading, demultiplexing, processing, writing,
                 "--writing-threads", writing,
                 "--barcode-mismatches", barcode_mismatches,
                 "--no-lane-splitting",
-                "--runfolder-dir", runfolder] + list(bcl2fastq_args)
-    run_bcl2fastq(runfolder, cmd_args)
+                "--runfolder-dir", runfolder_dir] + list(bcl2fastq_args)
+    if output_dir:
+        cmd_args.extend(["--output-dir", output_dir])
+    if input_dir:
+        cmd_args.extend(["--input-dir", input_dir])
+    run_bcl2fastq(runfolder_dir, cmd_args)
 
     # parse DemultiplexingStats.xml into a csv with summary plots
-    compile_demultiplex_stats(runfolder, fastq_dir)
+    compile_demultiplex_stats(runfolder_dir, fastq_dir)
 
     # TODO: deprecate!
     # write file with sample names for downstream parallelization
