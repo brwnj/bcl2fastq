@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name='bcl2fastq',
-    version='1.2.5',
+    version='1.2.6',
     url='http://github.com/brwnj/bcl2fastq',
     license='MIT',
     author='Joe Brown',
