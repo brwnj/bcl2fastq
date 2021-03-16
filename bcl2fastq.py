@@ -4,18 +4,12 @@
 from __future__ import print_function
 
 import matplotlib
-matplotlib.use('Agg')
 
-import click
-import fileinput
+matplotlib.use("Agg")
+
 import logging
-import matplotlib.pyplot as plt
-import numpy as np
 import os
-import pandas as pd
-import seaborn as sns
 import shutil
-import six
 import string
 import subprocess as sp
 import sys
@@ -24,21 +18,29 @@ import time
 import warnings
 from datetime import datetime
 from glob import glob
-from matplotlib.cbook import MatplotlibDeprecationWarning
 from xml.etree import cElementTree as ET
 
+import click
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import six
+from matplotlib.cbook import MatplotlibDeprecationWarning
 
-warnings.simplefilter('ignore', MatplotlibDeprecationWarning)
-sns.set_context('paper')
-sns.set_style('whitegrid', {'axes.linewidth': 1})
+warnings.simplefilter("ignore", MatplotlibDeprecationWarning)
+sns.set_context("paper")
+sns.set_style("whitegrid", {"axes.linewidth": 1})
 if six.PY2:
     _complement = string.maketrans("ATCG", "TAGC")
 else:
     _complement = str.maketrans("ATCG", "TAGC")
 complement = lambda seq: seq.translate(_complement)
-logging.basicConfig(level=logging.INFO,
-                    format="[%(asctime)s - %(levelname)s] %(message)s",
-                    datefmt="%Y-%m-%d %H:%M:%S")
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s - %(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 def get_samplesheet(path):
@@ -60,14 +62,17 @@ def get_file_sizes(output_dir):
     return total_size
 
 
-def process_samplesheet(samplesheet, new_samplesheet, reverse_complement=False,
-    determine=False):
+def process_samplesheet(
+    samplesheet, new_samplesheet, reverse_complement=False, determine=False
+):
     """Fix hidden characters in sample names and optional reverse complement
     the second index.
 
     Args:
         samplesheet (str): file path to SampleSheet.csv
+        new_samplesheet (str): file path to new_sample_sheet.csv
         reverse_complement (bool): to reverse complement 'Index2'
+        determine (bool): using several tiles, determine if it's better to reverse complement index2
 
     Returns:
         list
@@ -79,7 +84,9 @@ def process_samplesheet(samplesheet, new_samplesheet, reverse_complement=False,
     start = False
     index2_idx = None
 
-    with open(samplesheet, "rU" if six.PY2 else "r") as ifh, open(new_samplesheet, "w") as ofh:
+    with open(samplesheet, "rU" if six.PY2 else "r") as ifh, open(
+        new_samplesheet, "w"
+    ) as ofh:
         for line in ifh:
             toks = line.strip().split(",")
             if not start:
@@ -111,32 +118,30 @@ def process_samplesheet(samplesheet, new_samplesheet, reverse_complement=False,
 
     run = os.path.basename(os.path.dirname(samplesheet))
     if not determine:
-        logging.info('Found %d samples for run %s', len(samples), run)
+        logging.info("Found %d samples for run %s", len(samples), run)
     return samples
 
 
-def wait_for_completion(path, no_wait):
+def wait_for_completion(path, no_wait=True, delay=14400):
     if no_wait:
         return True
-    status_xml = os.path.join(path, "RunCompletionStatus.xml")
-    sleep_time = 1
+    rta_complete = os.path.join(path, "RTAComplete.txt")
+
+    # waiting for RTAComplete.txt to show up in local filesystem
     notify = True
-    while not os.path.exists(status_xml):
+    while not os.path.exists(rta_complete):
         if notify:
-            logging.info("Waiting on run completion.")
+            logging.info(
+                "Waiting on run completion. [%s]" % time.strftime("%Y-%m-%d %H:%M:%S")
+            )
             notify = False
-        time.sleep(sleep_time)
-        if sleep_time < 60:
-            sleep_time += 1
+        # wait 60 seconds each loop waiting for RTA file
+        time.sleep(60)
     logging.info("Run complete.")
-    try:
-        doc = ET.parse(status_xml)
-        run_status = doc.find("CompletionStatus").text
-    except IOError:
-        raise IOError(2, "Count not find file", status_xml)
-    except AttributeError:
-        raise AttributeError(2, "Error parsing file", status_xml)
-    return True if run_status == "CompletedAsPlanned" else False
+
+    # wait [delay] seconds for remaining files to transfer locally
+    time.sleep(delay)
+    return True
 
 
 def run_bcl2fastq(runfolder, args, determine=False):
@@ -148,36 +153,57 @@ def run_bcl2fastq(runfolder, args, determine=False):
         logging.info("Converting .bcl to .fastq using: $>%s", cmd)
     with open(runlog, "w") as fh:
         # bcl2fastq version info...
-        sp.check_call("bcl2fastq --version 2>&1 | tail -2 | head -1",
-                      stdout=fh,
-                      stderr=fh,
-                      shell=True)
+        sp.check_call(
+            "bcl2fastq --version 2>&1 | tail -2 | head -1",
+            stdout=fh,
+            stderr=fh,
+            shell=True,
+        )
         sp.check_call(cmd, stdout=fh, stderr=fh, shell=True)
     logging.info(".bcl Conversion successful")
 
 
-def run_determination_step(input_dir, runfolder, output_dir, samplesheet,
-                           loading, demultiplexing, processing, writing,
-                           barcode_mismatches):
+def run_determination_step(
+    input_dir,
+    runfolder,
+    output_dir,
+    samplesheet,
+    loading,
+    processing,
+    writing,
+    barcode_mismatches,
+):
     # set up a temporary working directory
     tmpd = tempfile.mkdtemp(dir=output_dir if output_dir else runfolder)
 
     date = datetime.now().strftime("%Y-%m-%d-%H%M-%S")
     rc_samplesheet = "%s.%s.rc.csv" % (samplesheet, date)
-    process_samplesheet(samplesheet, rc_samplesheet, reverse_complement=True,
-                        determine=True)
+    process_samplesheet(
+        samplesheet, rc_samplesheet, reverse_complement=True, determine=True
+    )
 
     # run the first set
-    # 11105 is small subset of tiles I found to generally work
-    cmd_args = ["bcl2fastq", "--tiles", "11105", "--no-lane-splitting",
-                "--runfolder-dir", runfolder,
-                "--output-dir", tmpd,
-                "--barcode-mismatches", barcode_mismatches,
-                "--loading-threads", loading,
-                "--demultiplexing-threads", demultiplexing,
-                "--processing-threads", processing,
-                "--writing-threads", writing,
-                "--sample-sheet", rc_samplesheet]
+    # 1105 is small subset of tiles I found to generally work
+    cmd_args = [
+        "bcl2fastq",
+        "--tiles",
+        "1105",
+        "--no-lane-splitting",
+        "--runfolder-dir",
+        runfolder,
+        "--output-dir",
+        tmpd,
+        "--barcode-mismatches",
+        barcode_mismatches,
+        "--loading-threads",
+        loading,
+        "--processing-threads",
+        processing,
+        "--writing-threads",
+        writing,
+        "--sample-sheet",
+        rc_samplesheet,
+    ]
     if input_dir:
         cmd_args.extend(["--input-dir", input_dir])
     run_bcl2fastq(tmpd, cmd_args, determine=True)
@@ -187,19 +213,31 @@ def run_determination_step(input_dir, runfolder, output_dir, samplesheet,
     # try the original
     tmpd = tempfile.mkdtemp(dir=output_dir if output_dir else runfolder)
     orig_samplesheet = "%s.%s.orig.csv" % (samplesheet, date)
-    samples = process_samplesheet(samplesheet, orig_samplesheet,
-                                  reverse_complement=False, determine=True)
+    samples = process_samplesheet(
+        samplesheet, orig_samplesheet, reverse_complement=False, determine=True
+    )
 
     # run the first set
-    cmd_args = ["bcl2fastq", "--tiles", "11105", "--no-lane-splitting",
-                "--runfolder-dir", runfolder,
-                "--output-dir", tmpd,
-                "--barcode-mismatches", barcode_mismatches,
-                "--loading-threads", loading,
-                "--demultiplexing-threads", demultiplexing,
-                "--processing-threads", processing,
-                "--writing-threads", writing,
-                "--sample-sheet", orig_samplesheet]
+    cmd_args = [
+        "bcl2fastq",
+        "--tiles",
+        "1105",
+        "--no-lane-splitting",
+        "--runfolder-dir",
+        runfolder,
+        "--output-dir",
+        tmpd,
+        "--barcode-mismatches",
+        barcode_mismatches,
+        "--loading-threads",
+        loading,
+        "--processing-threads",
+        processing,
+        "--writing-threads",
+        writing,
+        "--sample-sheet",
+        orig_samplesheet,
+    ]
     if input_dir:
         cmd_args.extend(["--input-dir", input_dir])
     run_bcl2fastq(tmpd, cmd_args, determine=True)
@@ -211,8 +249,12 @@ def run_determination_step(input_dir, runfolder, output_dir, samplesheet,
         os.remove(orig_samplesheet)
         return samples, rc_samplesheet
     elif rc_file_size == orig_file_size:
-        logging.critical(("The original and reverse complemented barcodes "
-                          "yielded the same number of demultiplexed reads."))
+        logging.critical(
+            (
+                "The original and reverse complemented barcodes "
+                "yielded the same number of demultiplexed reads."
+            )
+        )
         sys.exit(1)
     else:
         logging.info("Using the original barcodes to demultiplex")
@@ -226,27 +268,29 @@ def xml_to_df(stats_xml):
         doc = ET.parse(stats_xml)
         root = doc.getroot()
         counts = {}
-        for sample in root.iter('Sample'):
-            name = sample.get('name')
-            if name == "all" or name == "unknown": continue
+        for sample in root.iter("Sample"):
+            name = sample.get("name")
+            if name == "all" or name == "unknown":
+                continue
             counts[name] = {}
-            for barcode in sample.iter('Barcode'):
-                if barcode.get('name') == "all": continue
-                for lane in barcode.iter('Lane'):
-                    lane_name = lane.get('number')
-                    count = int(lane.findtext('BarcodeCount'))
+            for barcode in sample.iter("Barcode"):
+                if barcode.get("name") == "all":
+                    continue
+                for lane in barcode.iter("Lane"):
+                    lane_name = lane.get("number")
+                    count = int(lane.findtext("BarcodeCount"))
                     counts[name][lane_name] = count
         return pd.DataFrame(counts)
     else:
-        logging.warning('Could not find file %s', stats_xml)
+        logging.warning("Could not find file %s", stats_xml)
         return None
 
 
 def barplot_distribution(df, out_file):
     width = max([len(df) / 10, 12])
     f, ax = plt.subplots(figsize=(width, 6))
-    df.plot(kind='bar', stacked=True, ax=ax)
-    f.savefig(out_file, bbox_inches='tight')
+    df.plot(kind="bar", stacked=True, ax=ax)
+    f.savefig(out_file, bbox_inches="tight")
     plt.close()
 
 
@@ -275,7 +319,7 @@ def Lc(x):
     a = a[np.isfinite(a)]
     if a.min() < 0:
         raise ValueError("x contained negative number")
-    a.sort(kind='mergesort')
+    a.sort(kind="mergesort")
     a_len = float(len(a))
     p = np.arange(1, a_len + 1) / a_len
     p = np.append([0], p)
@@ -289,14 +333,16 @@ def lorenz_curve(df, out_file):
     p, L, Lg = Lc(df.sum(axis=1).values)
     f, ax = plt.subplots(figsize=(8, 6))
     plt.plot(p, L, axes=ax)
-    plt.plot([0,1], axes=ax, color='black', linestyle="--")
+    plt.plot([0, 1], axes=ax, color="black", linestyle="--")
     ax.set(title="Distribution of Barcode Mapped Reads")
-    f.savefig(out_file, bbox_inches='tight')
+    f.savefig(out_file, bbox_inches="tight")
     plt.close()
 
 
 def compile_demultiplex_stats(runfolder, out_dir):
-    stats_xml = os.path.join(os.path.abspath(out_dir), "Stats", "DemultiplexingStats.xml")
+    stats_xml = os.path.join(
+        os.path.abspath(out_dir), "Stats", "DemultiplexingStats.xml"
+    )
     df = xml_to_df(stats_xml)
     if df is not None:
         df.sum().to_csv(os.path.join(runfolder, "demultiplexing_stats.csv"))
@@ -304,88 +350,141 @@ def compile_demultiplex_stats(runfolder, out_dir):
             dft = df.transpose().drop("Undetermined", axis=0)
         except ValueError:
             dft = df.transpose()
-        barplot_distribution(dft, os.path.join(runfolder, "demultiplexing_distribution.pdf"))
-        lorenz_curve(dft, os.path.join(runfolder, "demultiplexing_distribution_curve.pdf"))
+        barplot_distribution(
+            dft, os.path.join(runfolder, "demultiplexing_distribution.pdf")
+        )
+        lorenz_curve(
+            dft, os.path.join(runfolder, "demultiplexing_distribution_curve.pdf")
+        )
 
 
-@click.command(context_settings=dict(
-               help_option_names=['-h', '--help'],
-               ignore_unknown_options=True,))
-@click.option("-i", "--input-dir",
-              default=None,
-              show_default=True,
-              help="path to input directory; default is RUNFOLDER-DIR/Data/Intensities/BaseCalls")
-@click.option("-R", "--runfolder-dir",
-              default=os.path.realpath("."),
-              show_default=True,
-              help="path to directory containing run data")
-@click.option("-o",
-              "--output-dir",
-              default=None,
-              help="path to demultiplexed output; default is same as INPUT-DIR")
-@click.option("--sample-sheet",
-              default=None,
-              help="file path to sample sheet; default is RUNFOLDER-DIR/SampleSheet.csv")
-@click.option("--loading",
-              default=12,
-              type=int,
-              show_default=True,
-              help="number of threads used for loading BCL data")
-@click.option("--demultiplexing",
-              default=12,
-              type=int,
-              show_default=True,
-              help="number of threads used for demultiplexing")
-@click.option("--processing",
-              default=24,
-              type=int,
-              show_default=True,
-              help="number of threads used for processing demultiplexed data")
-@click.option("--writing",
-              default=12,
-              type=int,
-              show_default=True,
-              help="number of threads used for writing FASTQ data")
-@click.option("--barcode-mismatches",
-              default=0,
-              type=int,
-              show_default=True,
-              help="number of allowed mismatches per index")
-@click.option("--keep-tmp",
-              is_flag=True,
-              default=False,
-              show_default=True,
-              help="save Undetermined reads")
-@click.option("--reverse-complement",
-              is_flag=True,
-              default=False,
-              show_default=True,
-              help="reverse complement index 2 of the sample sheet")
-@click.option("--no-wait",
-              is_flag=True,
-              default=False,
-              show_default=True,
-              help="process the run without checking its completion status")
-@click.option("--overwrite",
-              is_flag=True,
-              default=False,
-              show_default=True,
-              help="overwrite existing fastq files in the output directory")
-@click.option("--determine",
-              is_flag=True,
-              default=False,
-              show_default=True,
-              help="use barcodes in samplesheet as well as the reverse complement of index 2, then demultiplex with best")
-@click.option("--no-cleanup",
-              is_flag=True,
-              default=False,
-              show_default=True,
-              help="skip all cleaning up -- do not rename fastq output and do not delete undetermined files")
-@click.argument('bcl2fastq_args', nargs=-1, type=click.UNPROCESSED)
-def bcl2fastq(input_dir, runfolder_dir, output_dir, sample_sheet, loading,
-              demultiplexing, processing, writing, barcode_mismatches,
-              keep_tmp, reverse_complement, no_wait, overwrite, determine,
-              no_cleanup, bcl2fastq_args):
+@click.command(
+    context_settings=dict(
+        help_option_names=["-h", "--help"],
+        ignore_unknown_options=True,
+    )
+)
+@click.option(
+    "-i",
+    "--input-dir",
+    default=None,
+    show_default=True,
+    help="path to input directory; default is RUNFOLDER-DIR/Data/Intensities/BaseCalls",
+)
+@click.option(
+    "-R",
+    "--runfolder-dir",
+    default=os.path.realpath("."),
+    show_default=True,
+    help="path to directory containing run data",
+)
+@click.option(
+    "-o",
+    "--output-dir",
+    default=None,
+    help="path to demultiplexed output; default is same as INPUT-DIR",
+)
+@click.option(
+    "--sample-sheet",
+    default=None,
+    help="file path to sample sheet; default is RUNFOLDER-DIR/SampleSheet.csv",
+)
+@click.option(
+    "--loading",
+    default=12,
+    type=int,
+    show_default=True,
+    help="number of threads used for loading BCL data",
+)
+@click.option(
+    "--processing",
+    default=24,
+    type=int,
+    show_default=True,
+    help="number of threads used for processing demultiplexed data",
+)
+@click.option(
+    "--writing",
+    default=12,
+    type=int,
+    show_default=True,
+    help="number of threads used for writing FASTQ data",
+)
+@click.option(
+    "--barcode-mismatches",
+    default=0,
+    type=int,
+    show_default=True,
+    help="number of allowed mismatches per index",
+)
+@click.option(
+    "--keep-tmp",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="save Undetermined reads",
+)
+@click.option(
+    "--reverse-complement",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="reverse complement index 2 of the sample sheet",
+)
+@click.option(
+    "--no-wait",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="process the run without checking its completion status",
+)
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="overwrite existing fastq files in the output directory",
+)
+@click.option(
+    "--determine",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="use barcodes in samplesheet as well as the reverse complement of index 2, then demultiplex with best",
+)
+@click.option(
+    "--no-cleanup",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="skip all cleaning up -- do not rename fastq output and do not delete undetermined files",
+)
+@click.option(
+    "--delay",
+    default=14400,
+    type=int,
+    show_default=True,
+    help="number of seconds to sleep after finding RTAComplete.txt -- applies only when waiting for a run to complete",
+)
+@click.argument("bcl2fastq_args", nargs=-1, type=click.UNPROCESSED)
+def bcl2fastq(
+    input_dir,
+    runfolder_dir,
+    output_dir,
+    sample_sheet,
+    loading,
+    processing,
+    writing,
+    barcode_mismatches,
+    keep_tmp,
+    reverse_complement,
+    no_wait,
+    overwrite,
+    determine,
+    no_cleanup,
+    delay,
+    bcl2fastq_args,
+):
     """Runs bcl2fastq2, creating fastqs and concatenating fastqs across lanes.
     Undetermined files are deleted by default.
 
@@ -411,19 +510,28 @@ def bcl2fastq(input_dir, runfolder_dir, output_dir, sample_sheet, loading,
             # this run has already been converted, so don't reverse complement
             # just get the sample names
             if reverse_complement:
-                logging.warning(("reverse complementing has been skipped as "
-                                 "a log file (bcl2fastq.log) was found"))
+                logging.warning(
+                    (
+                        "reverse complementing has been skipped as "
+                        "a log file (bcl2fastq.log) was found"
+                    )
+                )
             samples = process_samplesheet(samplesheet, new_samplesheet, False)
         else:
-            samples = process_samplesheet(samplesheet, new_samplesheet,
-                                          reverse_complement)
+            samples = process_samplesheet(
+                samplesheet, new_samplesheet, reverse_complement
+            )
         if len(samples) == 0:
-            logging.critical(("No samples were found in the SampleSheet. "
-                              "Please check its formatting."))
+            logging.critical(
+                (
+                    "No samples were found in the SampleSheet. "
+                    "Please check its formatting."
+                )
+            )
             sys.exit(1)
 
-    # check for 'CompletedAsPlanned' in RunCompletionStatus.xml
-    completion_success = wait_for_completion(runfolder_dir, no_wait)
+    # check for RTAComplete.txt and sleep for delay
+    completion_success = wait_for_completion(runfolder_dir, no_wait, delay)
     if not completion_success:
         logging.critical("Run did not complete as planned. Exiting.")
         sys.exit(1)
@@ -432,31 +540,41 @@ def bcl2fastq(input_dir, runfolder_dir, output_dir, sample_sheet, loading,
     if output_dir:
         fastq_dir = os.path.realpath(output_dir)
     else:
-        fastq_dir = os.path.abspath(os.path.join(runfolder_dir, "Data",
-                                                 "Intensities", "BaseCalls"))
+        fastq_dir = os.path.abspath(
+            os.path.join(runfolder_dir, "Data", "Intensities", "BaseCalls")
+        )
 
     # check original and reverse complement using a few tiles
     if determine:
         # need to add input_dir, output_dir
-        samples, new_samplesheet = run_determination_step(input_dir,
-                                                          runfolder_dir,
-                                                          output_dir,
-                                                          samplesheet,
-                                                          loading,
-                                                          demultiplexing,
-                                                          processing,
-                                                          writing,
-                                                          barcode_mismatches)
+        samples, new_samplesheet = run_determination_step(
+            input_dir,
+            runfolder_dir,
+            output_dir,
+            samplesheet,
+            loading,
+            processing,
+            writing,
+            barcode_mismatches,
+        )
 
     # run bcl2fastq on the run folder
-    cmd_args = ["bcl2fastq", "--sample-sheet", new_samplesheet,
-                "--loading-threads", loading,
-                "--demultiplexing-threads", demultiplexing,
-                "--processing-threads", processing,
-                "--writing-threads", writing,
-                "--barcode-mismatches", barcode_mismatches,
-                "--no-lane-splitting",
-                "--runfolder-dir", runfolder_dir] + list(bcl2fastq_args)
+    cmd_args = [
+        "bcl2fastq",
+        "--sample-sheet",
+        new_samplesheet,
+        "--loading-threads",
+        loading,
+        "--processing-threads",
+        processing,
+        "--writing-threads",
+        writing,
+        "--barcode-mismatches",
+        barcode_mismatches,
+        "--no-lane-splitting",
+        "--runfolder-dir",
+        runfolder_dir,
+    ] + list(bcl2fastq_args)
     if output_dir:
         cmd_args.extend(["--output-dir", output_dir])
     if input_dir:
@@ -468,7 +586,7 @@ def bcl2fastq(input_dir, runfolder_dir, output_dir, sample_sheet, loading,
 
     # TODO: deprecate!
     # write file with sample names for downstream parallelization
-    with open(os.path.join(fastq_dir, "SAMPLES"), 'w') as ofh:
+    with open(os.path.join(fastq_dir, "SAMPLES"), "w") as ofh:
         print(*samples, sep="\n", file=ofh)
 
     # cleanup the output directory
@@ -484,17 +602,24 @@ def bcl2fastq(input_dir, runfolder_dir, output_dir, sample_sheet, loading,
             else:
                 try:
                     # AD-332-A10_S1_R1_001.fastq.gz --> AD-332-A10_R1.fastq.gz
-                    sample_name, sample_number, read_index, ext = filename.split("_")
+                    sample_name, _, read_index, ext = filename.split("_")
                     # munge the file name
-                    new_file_name = "%s_%s.%s" % (sample_name, read_index, ext.partition('.')[-1])
+                    new_file_name = "%s_%s.%s" % (
+                        sample_name,
+                        read_index,
+                        ext.partition(".")[-1],
+                    )
                     # prepend the path
                     new_file_name = os.path.join(os.path.dirname(f), new_file_name)
                     if overwrite and os.path.exists(new_file_name):
                         os.remove(new_file_name)
                     os.rename(f, new_file_name)
                 except ValueError:
-                    logging.warn("Renaming skipped: the output dir contains conflicting FASTQ file for %s" % f)
+                    logging.warn(
+                        "Renaming skipped: the output dir contains conflicting FASTQ file for %s"
+                        % f
+                    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     bcl2fastq()
